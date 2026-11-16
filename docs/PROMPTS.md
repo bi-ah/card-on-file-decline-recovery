@@ -126,3 +126,30 @@ it was sent; only line-wrap artifacts (words joined where a line break was lost)
 > 9. Ask before creating the repository, pushing, deploying or deleting anything.
 > 10. Report honestly: only say something works after the tests and end-to-end checks prove
 >     it, and show the evidence.
+
+## Prompt 5: engineering requirements
+
+> *Unit tests* (vitest) for the rules engine, router (including capability and credential-type
+> fallback), limits and simulators, with a labelled table of at least 50 decline cases and
+> their expected action, reason, PSP and timing.
+>
+> *Invariant tests* over whole generated nights for several seeds: guardrails 3 and 4 hold,
+> and the policy recovers more revenue with fewer retries than the naive schedule.
+>
+> *Functional tests* that drive the running Worker through its API: generate, recover, wait for
+> completion, then verify the ledger obeyed every rule and the chat answered from tools.
+> Runnable against `wrangler dev` and the deployed URL.
+>
+> *CI/CD* with GitHub Actions: type check and tests on every push and pull request; on `main`,
+> deploy and run the functional tests against the live URL. Tell me the exact Cloudflare API
+> token permissions and I will add the secret myself.
+>
+> *Architecture docs:* README (problem, architecture, how to run, API, scope), ADRs for the
+> main decisions (LLM explains not decides; rules as configuration; D4 vault and network
+> tokens; routing and cascading; idempotency and limit counting; what is simulated).
+>
+> *Operator page:* summary tiles, detected incidents, payments table with filters, a
+> per-payment timeline of decisions with their rules, and the chat showing which tools each
+> answer used. Works on phone and desktop, light and dark.
+>
+> Check current versions of wrangler, Workflows and Workers AI models before writing code.
