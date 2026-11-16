@@ -86,3 +86,19 @@ it was sent; only line-wrap artifacts (words joined where a line break was lost)
 > `step.sleep` on a compressed clock (one simulated day = a few seconds, configurable); a
 > SQLite-backed Durable Object as the ledger (payments, attempts, decisions, events, chat
 > history); Workers AI with function calling; static assets for one operator page.
+
+## Prompt 3: the design document
+
+> Before any code, create `docs/DESIGN.md` with:
+>
+> 1. The problem, with a *problem sequence diagram* (Mermaid) whose actors are customer,
+>    merchant billing, single PSP, card network and issuer, marking where money is lost.
+> 2. The solution, with a *solution sequence diagram* (Mermaid) whose actors are customer,
+>    merchant platform, vault provider, PSPs, token service and account updater, and issuer,
+>    covering onboarding, prevention before billing, renewal, decline and each recovery path.
+> 3. An *entity and trust-boundary diagram* showing the PCI DSS zone and what data crosses
+>    each boundary.
+> 4. A *decision flowchart* for the rules engine (network rules, MAC override, limits,
+>    paths).
+> 5. A table mapping each problem to its fix, and a section on what is simulated. Show me the
+>    document when done.
