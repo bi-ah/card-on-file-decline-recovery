@@ -98,6 +98,9 @@ export class Ledger extends DurableObject<Env> {
       return null;
     }
   }
+  live(runId: string, after: number) {
+    return this.logic.live(runId, after);
+  }
   incidents(runId: string) {
     return this.logic.incidents(runId);
   }

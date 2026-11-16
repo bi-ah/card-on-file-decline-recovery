@@ -5,6 +5,7 @@ import { simLabel } from "../core/time";
 import { SIMULATED_LABEL } from "../sim/catalog";
 import type { AttemptRow, DecisionRow, EventRow, PaymentRow, RunRow } from "../ledger/logic";
 import { answer } from "./chat";
+import readme from "../../README.md";
 import { ledgerOf, type LedgerApi } from "./ledger-do";
 
 export { Ledger } from "./ledger-do";
@@ -41,6 +42,9 @@ async function route(req: Request, url: URL, env: Env, ledger: Stub): Promise<Re
 
   if (p === "/api/health") return json({ ok: true });
   if (p === "/api/rules" && req.method === "GET") return json({ rules: allRules(), sources: SOURCES, policy: POLICY });
+  if (p === "/api/overview" && req.method === "GET") {
+    return new Response(readme, { headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": "public, max-age=300" } });
+  }
 
   if (p === "/api/runs" && req.method === "GET") return json({ runs: (await ledger.listRuns(20)).map(runItem) });
   if (p === "/api/runs" && req.method === "POST") return createRun(req, env, ledger);
@@ -56,6 +60,17 @@ async function route(req: Request, url: URL, env: Env, ledger: Stub): Promise<Re
   }
   if ((r = m(/^\/api\/runs\/([\w-]+)\/recover$/)) && req.method === "POST") return startRecovery(r[1]!, env, ledger, url.searchParams.get("restart") === "1");
   if ((r = m(/^\/api\/runs\/([\w-]+)\/workflows$/)) && req.method === "GET") return workflowStatus(r[1]!, env, ledger);
+  if ((r = m(/^\/api\/runs\/([\w-]+)\/live$/)) && req.method === "GET") {
+    const run = await ledger.getRun(r[1]!);
+    if (!run) return err(404, "run not found");
+    const live = (await ledger.live(run.id, int(url.searchParams.get("after") ?? undefined, 0)))!;
+    return json({
+      run: runItem(run),
+      serverNow: Date.now(),
+      ...live,
+      activity: live.activity.map((a) => ({ id: a.id, paymentId: a.payment_id, at: a.at, atLabel: simLabel(a.at), kind: a.kind, text: a.text })),
+    });
+  }
   if ((r = m(/^\/api\/runs\/([\w-]+)\/incidents$/)) && req.method === "GET") {
     const list = await ledger.incidents(r[1]!);
     return json({ incidents: list.map((i) => ({ ...i, fromLabel: simLabel(i.from), toLabel: simLabel(i.to) })) });
@@ -99,7 +114,7 @@ async function ipBucket(req: Request, ledger: Stub): Promise<string> {
 }
 
 async function createRun(req: Request, env: Env, ledger: Stub): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { size?: string; seed?: number; dayMs?: number };
+  const body = (await req.json().catch(() => ({}))) as { size?: string; seed?: number; dayMs?: number; start?: boolean };
   const size = body.size === "ci" ? "ci" : "full";
   const now = Date.now();
   const active = await ledger.activeRun(now);
@@ -112,7 +127,7 @@ async function createRun(req: Request, env: Env, ledger: Stub): Promise<Response
     ],
     now,
   );
-  if (!ok) return err(429, "hourly quota for generating nights reached; try again later");
+  if (!ok) return err(429, "hourly quota for generating nights reached; try again later", { resetsAt: nextHour(now) });
   const seed = Number.isInteger(body.seed) && body.seed! > 0 && body.seed! < 1e9 ? body.seed! : 1 + (crypto.getRandomValues(new Uint32Array(1))[0]! % 999_999);
   const dayMs = Number.isFinite(body.dayMs) ? Math.min(Math.max(Math.round(body.dayMs!), 200), 10_000) : int(env.SIM_DAY_MS, 3000);
   const runId = `run_${now.toString(36)}_${seed}`;
@@ -120,6 +135,11 @@ async function createRun(req: Request, env: Env, ledger: Stub): Promise<Response
     { runId, seed, renewals: SIZES[size], nightDate: new Date(now).toISOString().slice(0, 10), dayMs, label: size, createdAt: now },
     int(env.KEEP_RUNS, 5),
   );
+  if (body.start) {
+    // One action: generate the night, then start recovery straight away.
+    const started = await startRecovery(run.id, env, ledger);
+    return json(await started.json(), started.status === 202 ? 201 : started.status);
+  }
   return json({ run: runItem(run) }, 201);
 }
 
@@ -213,12 +233,16 @@ async function chat(req: Request, env: Env, ledger: Stub): Promise<Response> {
     ],
     Date.now(),
   );
-  if (!ok) return err(429, "hourly chat quota reached; try again later");
+  if (!ok) return err(429, "hourly chat quota reached; try again later", { resetsAt: nextHour(Date.now()) });
   const history = await ledger.chatHistory(run.id, 6);
   const res = await answer(env.AI, env.AI_MODEL, ledger, run.id, history, message);
   await ledger.addChat(run.id, "user", message, [], Date.now());
   await ledger.addChat(run.id, "assistant", res.answer, res.tools, Date.now());
   return json(res);
+}
+
+function nextHour(nowMs: number): number {
+  return (Math.floor(nowMs / 3_600_000) + 1) * 3_600_000;
 }
 
 function runItem(r: RunRow) {
@@ -232,6 +256,7 @@ function runItem(r: RunRow) {
     declines: r.declines,
     dayMs: r.day_ms,
     createdAt: r.created_at,
+    startedAt: r.started_at,
     completedAt: r.completed_at,
   };
 }

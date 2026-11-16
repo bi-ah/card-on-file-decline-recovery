@@ -47,7 +47,31 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, role TEXT, content TEXT, tools TEXT, created_at INTEGER)`,
   `CREATE TABLE IF NOT EXISTS quotas (bucket TEXT, window_start INTEGER, count INTEGER, PRIMARY KEY (bucket, window_start))`,
   `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
+  // A feed of what happened, in the order it happened (for the live view on the operator page).
+  `CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, payment_id TEXT, at INTEGER, kind TEXT, text TEXT)`,
+  `CREATE INDEX IF NOT EXISTS activity_run ON activity(run_id, id)`,
 ];
+
+export interface ActivityRow {
+  id: number;
+  run_id: string;
+  payment_id: string;
+  at: number;
+  kind: string;
+  text: string;
+}
+
+export interface LiveProgress {
+  status: string;
+  declined: number;
+  settled: number;
+  inProgress: number;
+  recovered: number;
+  recoveredCents: number;
+  attempts: number;
+  activity: ActivityRow[];
+  cursor: number;
+}
 
 export interface PaymentRow {
   id: string;
@@ -256,7 +280,7 @@ export class LedgerLogic {
     const keepFull = this.db.all<{ id: string }>(`SELECT id FROM runs WHERE label='full' AND status='completed' ORDER BY created_at DESC LIMIT 1`)[0]?.id;
     for (const { id } of old) {
       if (id === keepFull) continue;
-      for (const t of ["payments", "attempts", "decisions", "events", "sim_cards", "chat"]) this.db.run(`DELETE FROM ${t} WHERE run_id=?`, id);
+      for (const t of ["payments", "attempts", "decisions", "events", "sim_cards", "chat", "activity"]) this.db.run(`DELETE FROM ${t} WHERE run_id=?`, id);
       this.db.run(`DELETE FROM sim_nights WHERE run_id=?`, id);
       this.db.run(`DELETE FROM runs WHERE id=?`, id);
     }
@@ -382,6 +406,8 @@ export class LedgerLogic {
       const ntid = a.customer_initiated ? `ntid_${hash32(paymentId, step).toString(36)}` : p.ntid;
       this.db.run(`UPDATE payments SET status='recovered', outcome='recovered', path=?, recovered_at=?, ntid=? WHERE id=?`, path, a.at, ntid, paymentId);
     }
+    const what = a.customer_initiated ? "new card charged" : "retry";
+    this.activity(a.run_id, paymentId, a.at, r.approved ? "approved" : "declined", r.approved ? `${what} via ${a.psp} approved` : `${what} via ${a.psp} declined ${r.code}${r.mac ? ` / MAC ${r.mac}` : ""}`);
   }
 
   updateCredential(paymentId: string, step: string, at: number): { updated: boolean; version: number } {
@@ -403,6 +429,7 @@ export class LedgerLogic {
     }
     const detail = { updated: r.updated, version, via, text: r.updated ? `${via}: new credential (expiry or card replaced)` : `${via}: no newer credential${"closed" in r && r.closed ? " (account closed)" : ""}` };
     this.event(paymentId, step, p.run_id, at, r.updated ? "credential_refreshed" : "credential_unchanged", detail);
+    this.activity(p.run_id, paymentId, at, "credential", detail.text);
     return { updated: r.updated, version };
   }
 
@@ -420,6 +447,7 @@ export class LedgerLogic {
       windowMinutes,
       text: customerMessage(p.last_classification),
     });
+    this.activity(p.run_id, paymentId, at, "customer", "customer asked to update the card");
     return { respondsAfter, windowMinutes };
   }
 
@@ -434,6 +462,7 @@ export class LedgerLogic {
       lineage, vaultRef(paymentId, "customer"), last4, at, paymentId,
     );
     this.event(paymentId, step, p.run_id, at, "customer_updated_card", { text: "The customer entered a new card in the hosted form; the vault provisioned a new network token" });
+    this.activity(p.run_id, paymentId, at, "customer", "customer entered a new card");
   }
 
   finish(paymentId: string, d: Decision | null, at: number): void {
@@ -444,6 +473,7 @@ export class LedgerLogic {
         const outcome = d?.stopOutcome ?? "exhausted";
         this.db.run(`UPDATE payments SET status=?, outcome=?, path=?, final_reason=?, now=? WHERE id=?`, outcome === "cancelled" ? "cancelled" : "failed", outcome, outcome, d?.reason ?? "stopped", at, paymentId);
         if (d?.notifyCustomer) this.event(paymentId, "notify", p.run_id, at, "customer_notified", { text: stopMessage(outcome) });
+        this.activity(p.run_id, paymentId, at, "stopped", `stopped: ${outcome.replace("_", " ")}`);
         if (outcome === "alert_ops") this.event(paymentId, "alert", p.run_id, at, "operations_alerted", { text: "Invalid transaction (12): operations alerted to check the request format" });
       }
       this.event(paymentId, "finish", p.run_id, at, "finished", { status: this.payment(paymentId).status });
@@ -621,6 +651,35 @@ export class LedgerLogic {
     const v = init();
     this.db.run(`INSERT INTO meta (key, value) VALUES (?, ?)`, key, v);
     return v;
+  }
+
+  /** Progress counters and the activity since `after`, from cheap aggregate queries. */
+  live(runId: string, after: number, limit = 40): LiveProgress | null {
+    const run = this.getRun(runId);
+    if (!run) return null;
+    const c = this.db.all<{ declined: number; inProgress: number; recovered: number; recoveredCents: number }>(
+      `SELECT COUNT(*) AS declined, SUM(status='recovering') AS inProgress, SUM(status='recovered') AS recovered,
+              SUM(CASE WHEN status='recovered' THEN amount_cents ELSE 0 END) AS recoveredCents
+       FROM payments WHERE run_id=? AND first_decline_at IS NOT NULL`, runId,
+    )[0]!;
+    const attempts = this.db.all<{ n: number }>(`SELECT COUNT(*) AS n FROM attempts WHERE run_id=? AND step<>'initial'`, runId)[0]!.n;
+    const rows = this.db.all<ActivityRow>(`SELECT * FROM activity WHERE run_id=? AND id>? ORDER BY id DESC LIMIT ?`, runId, after, limit).reverse();
+    const cursor = this.db.all<{ m: number | null }>(`SELECT MAX(id) AS m FROM activity WHERE run_id=?`, runId)[0]!.m ?? 0;
+    return {
+      status: run.status,
+      declined: c.declined ?? 0,
+      settled: (c.declined ?? 0) - (c.inProgress ?? 0),
+      inProgress: c.inProgress ?? 0,
+      recovered: c.recovered ?? 0,
+      recoveredCents: c.recoveredCents ?? 0,
+      attempts,
+      activity: rows,
+      cursor,
+    };
+  }
+
+  private activity(runId: string, paymentId: string, at: number, kind: string, text: string): void {
+    this.db.run(`INSERT INTO activity (run_id, payment_id, at, kind, text) VALUES (?,?,?,?,?)`, runId, paymentId, at, kind, text);
   }
 
   private event(paymentId: string, step: string, runId: string, at: number, type: string, detail: unknown): void {

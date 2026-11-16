@@ -5,6 +5,9 @@
   "compatibility_date": "2026-11-01",
   "observability": { "enabled": true },
 
+  // The README is served on the operator page as the system overview.
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+
   // Operator page. API routes run in the Worker first.
   "assets": {
     "directory": "./public",

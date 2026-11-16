@@ -23,6 +23,29 @@ describe.each(SEEDS)("whole night, seed %i", (seed) => {
   });
 });
 
+describe("live progress and activity feed", () => {
+  it("counts settled renewals and lists what happened, in order, after a cursor", async () => {
+    const ledger = memoryLedger();
+    ledger.createRun({ runId: "r", seed: 7, renewals: 600, nightDate: "2026-11-16", dayMs: 0, label: "test", createdAt: 0 });
+    const before = ledger.live("r", 0)!;
+    expect(before.settled).toBe(0);
+    expect(before.inProgress).toBe(before.declined);
+    expect(before.activity).toEqual([]);
+    await recoverRunLocally(ledger, "r");
+    const after = ledger.live("r", 0, 1000)!;
+    expect(after.status).toBe("completed");
+    expect(after.settled).toBe(after.declined);
+    expect(after.inProgress).toBe(0);
+    expect(after.attempts).toBeGreaterThan(0);
+    expect(after.activity.length).toBeGreaterThan(after.declined);
+    expect(after.activity.map((a) => a.id)).toEqual([...after.activity.map((a) => a.id)].sort((a, b) => a - b));
+    for (const a of after.activity) expect(["approved", "declined", "credential", "customer", "stopped"]).toContain(a.kind);
+    expect(after.recovered).toBe(after.activity.filter((a) => a.kind === "approved").length);
+    expect(ledger.live("r", after.cursor)!.activity).toEqual([]);
+    expect(JSON.stringify(after.activity)).not.toMatch(/\d{13,19}/);
+  });
+});
+
 describe("idempotency and atomic reservation", () => {
   it("returns the same decision, reservation and result when a step runs twice", () => {
     const ledger = memoryLedger();
