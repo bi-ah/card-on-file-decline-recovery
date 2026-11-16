@@ -1,8 +1,8 @@
 # Design: Card-on-File Decline Recovery
 
-Status: draft, before any code. The network rules below are taken as specified in the brief
-(public Visa and Mastercard material, conservative readings). They still need checking against
-the sources; the open points are listed at the end.
+Status: built. Written before any code, then updated with the decisions of 16 Nov 2026
+(Category 1 handling, paydays, outages, quotas). The rules as implemented, with their sources
+and confidence, are in [network-rules.md](network-rules.md); the decisions are in [adr](adr).
 
 ## 1. The problem
 
@@ -265,16 +265,17 @@ Every rule carries its source in configuration.
 
 | Brand | Rule | Codes | Meaning |
 |---|---|---|---|
-| Visa | Category 1 | 04, 07, 12, 14, 15, 41, 43, 46, 57, R0, R1, R3 | Issuer will never approve: never retry |
+| Visa | Category 1 | 04, 07, 12, 14, 15, 41, 43, 46, 57, R0, R1, R3 | Never retry the credential. 07 stop, no outreach; 04, 41, 43, 46, 14 refresh the credential, else ask the customer; 15, 57 ask the customer; 12 stop and alert operations; R0, R1, R3 cancel, no dunning |
 | Visa | Category 2 | 03, 19, 51, 59, 61, 62, 65, 75, 78, 86, 91, 93, 96, N3, N4, 5C, 9G | Issuer cannot approve now: retry later |
 | Visa | Category 3 | 54, 55, 63, 6P, 82, N7 | Data quality: fix the data first |
 | Visa | Category 4 | 05 and any unlisted code | Generic |
 | Mastercard | MAC 01 | | Updated information needed: account updater |
 | Mastercard | MAC 02 | | Try again later |
-| Mastercard | MAC 03, 21 | | Do not try again / recurring payment cancelled: never |
+| Mastercard | MAC 03 | | Do not try again: never retry this card; ask the customer for another |
+| Mastercard | MAC 21 | | Recurring payment cancelled: cancel, no dunning |
 | Mastercard | MAC 24 to 30 | | Retry after 1 h, 24 h, 2, 4, 6, 8, 10 days |
-| Mastercard | MAC 40, 41, 42 | | Never |
-| Mastercard | Hard decline, no MAC | 04, 14, 15, 41, 43, 54 | Do not retry the same credential |
+| Mastercard | MAC 40, 41, 42 | | Never retry: stop and tell the customer |
+| Mastercard | Hard decline, no MAC | 04, 14, 15, 41, 43, 54 | Never retry the same credential: refresh it (15: ask the customer) |
 | Visa | Retry limit | | 15 in 30 days per card lineage and merchant |
 | Mastercard | Retry limit | | 7 in 24 hours and 35 in 30 days per card lineage and merchant |
 
@@ -293,15 +294,22 @@ flowchart TD
     MAC -- "01" --> FIX
     MAC -- "02" --> LATER
     MAC -- "24 to 30" --> WAIT["Wait the MAC interval:<br/>1 h, 24 h, 2, 4, 6, 8 or 10 days"]
-    MAC -- "03, 21, 40, 41, 42" --> STOP
+    MAC -- "03" --> ASK
+    MAC -- "21" --> CANCEL
+    MAC -- "40, 41, 42" --> STOP
     MAC -- "Other MAC" --> CODE
     HM -- "No" --> HARD{"Hard decline?<br/>04, 14, 15, 41, 43, 54"}
-    HARD -- "54 expired card" --> FIX
-    HARD -- "04, 14, 15, 41, 43" --> STOP
+    HARD -- "04, 41, 43, 14, 54" --> FIX
+    HARD -- "15" --> ASK
     HARD -- "No" --> CODE
 
     B -- "Visa" --> CODE{"Response code category"}
-    CODE -- "1 never retry" --> STOP
+    CODE -- "1 never retry" --> CAT1{"Category 1 code"}
+    CAT1 -- "07" --> SILENT["Stop, no outreach"]
+    CAT1 -- "04, 41, 43, 46, 14" --> FIX
+    CAT1 -- "15, 57" --> ASK
+    CAT1 -- "12" --> OPS["Stop and alert operations"]
+    CAT1 -- "R0, R1, R3" --> CANCEL["Stop and cancel the subscription,<br/>no dunning"]
     CODE -- "2 retry later" --> LATER
     CODE -- "3 fix the data first" --> FIX
     CODE -- "4 generic, 05 or unlisted" --> GEN["Generic"]
@@ -367,15 +375,23 @@ Every simulated component is labelled as simulated in code, in the ledger and on
 page. Each payment carries an explicit credential type (network token or PAN fallback), the
 MIT flag and the NTID.
 
-## 7. Open points to check against the sources
+## 7. Decisions taken (16 Nov 2026)
+
+- Category 1 handling per code, as in the table above.
+- Paydays: the 1st, 15th and 25th and the last day of the month. 30% of customers respond.
+  Each night has one PSP outage window and one issuer outage.
+- A card the customer enters is charged at once as a customer-initiated payment, outside the
+  retry budget, as a new card lineage with a new network transaction ID.
+- Mastercard 54 (expired card) refreshes the credential rather than stopping.
+- The cascadable codes are generic (05 and unlisted), 19, 91, 92 and 96, and PSP unavailable.
+
+## 8. Open points to check against the sources
 
 1. The Visa category code lists and the 15-in-30-days limit; whether the limit is per card or
    per card and merchant, and how replacement cards count.
 2. The Mastercard limits (7 in 24 hours, 35 in 30 days) and which reading the networks
    currently publish; MAC 40 to 42 meanings.
-3. Mastercard 54 (expired card) as a hard decline: this design treats it as "fix the
-   credential", never "retry the same credential".
-4. Whether an MIT carrying a network token still needs the NTID of the first CIT, and what
+3. Whether an MIT carrying a network token still needs the NTID of the first CIT, and what
    happens to the NTID when the customer enters a new card through the update link.
-5. Which decline codes count as processing, issuer-unavailable or acquirer-side for routing to
+4. Which decline codes count as processing, issuer-unavailable or acquirer-side for routing to
    another PSP (proposed: 91, 96 and PSP-side errors).

@@ -54,7 +54,8 @@ async function route(req: Request, url: URL, env: Env, ledger: Stub): Promise<Re
     if (!run) return err(404, "run not found");
     return json({ run: runItem(run), summary: await ledger.summary(run.id), simulatedLabel: SIMULATED_LABEL });
   }
-  if ((r = m(/^\/api\/runs\/([\w-]+)\/recover$/)) && req.method === "POST") return startRecovery(r[1]!, env, ledger);
+  if ((r = m(/^\/api\/runs\/([\w-]+)\/recover$/)) && req.method === "POST") return startRecovery(r[1]!, env, ledger, url.searchParams.get("restart") === "1");
+  if ((r = m(/^\/api\/runs\/([\w-]+)\/workflows$/)) && req.method === "GET") return workflowStatus(r[1]!, env, ledger);
   if ((r = m(/^\/api\/runs\/([\w-]+)\/incidents$/)) && req.method === "GET") {
     const list = await ledger.incidents(r[1]!);
     return json({ incidents: list.map((i) => ({ ...i, fromLabel: simLabel(i.from), toLabel: simLabel(i.to) })) });
@@ -122,17 +123,52 @@ async function createRun(req: Request, env: Env, ledger: Stub): Promise<Response
   return json({ run: runItem(run) }, 201);
 }
 
-async function startRecovery(runId: string, env: Env, ledger: Stub): Promise<Response> {
+async function startRecovery(runId: string, env: Env, ledger: Stub, restart = false): Promise<Response> {
   const run = await ledger.getRun(runId);
   if (!run) return err(404, "run not found");
   if (run.status === "abandoned") return err(409, "run abandoned");
   const { run: started, paymentIds } = await ledger.startRecovery(runId, Date.now());
+  if (restart) {
+    // Operations: restart instances of renewals still in progress. Safe because every
+    // ledger step is idempotent by (payment, step): a replay gets the stored results.
+    const { rows } = await ledger.listPayments(runId, { status: "recovering", limit: 500 });
+    let restarted = 0;
+    for (const p of rows) {
+      const id = `${runId}-${p.id}`;
+      try {
+        await (await env.RECOVERY.get(id)).restart();
+      } catch {
+        await env.RECOVERY.create({ id, params: { runId, paymentId: p.id, dayMs: run.day_ms } });
+      }
+      restarted++;
+    }
+    return json({ run: runItem(started), started: 0, restarted }, 202);
+  }
   // Deterministic instance ids: starting the same run twice cannot create duplicates.
   for (let i = 0; i < paymentIds.length; i += 100) {
     const chunk = paymentIds.slice(i, i + 100);
     await env.RECOVERY.createBatch(chunk.map((paymentId) => ({ id: `${runId}-${paymentId}`, params: { runId, paymentId, dayMs: run.day_ms } })));
   }
   return json({ run: runItem(started), started: paymentIds.length }, 202);
+}
+
+/** Workflow instance states for the payments still in progress (operations view). */
+async function workflowStatus(runId: string, env: Env, ledger: Stub): Promise<Response> {
+  const { rows } = await ledger.listPayments(runId, { status: "recovering", limit: 200 });
+  const counts: Record<string, number> = {};
+  const sample: Array<{ id: string; status: string; error?: string }> = [];
+  for (const p of rows.slice(0, 50)) {
+    const id = `${runId}-${p.id}`;
+    try {
+      const s = await (await env.RECOVERY.get(id)).status();
+      counts[s.status] = (counts[s.status] ?? 0) + 1;
+      if (sample.length < 5) sample.push({ id, status: s.status, ...(s.error ? { error: String(s.error.message ?? s.error) } : {}) });
+    } catch (e) {
+      counts.missing = (counts.missing ?? 0) + 1;
+      if (sample.length < 5) sample.push({ id, status: "missing", error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return json({ checked: Math.min(rows.length, 50), inProgress: rows.length, counts, sample });
 }
 
 async function chat(req: Request, env: Env, ledger: Stub): Promise<Response> {
