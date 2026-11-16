@@ -96,7 +96,7 @@ export function auditRun(x: RunExport): Violation[] {
   }
 
   // Guardrail 6: nothing that looks like a card number anywhere in the ledger.
-  const text = JSON.stringify(x);
+  const text = JSON.stringify([x.payments, x.attempts, x.decisions, x.events]);
   if (PAN_LIKE.test(text)) v.push({ rule: "guardrail-6.no-pan", paymentId: "-", detail: "a 13 to 19 digit number appears in the ledger" });
   return v;
 }

@@ -12,6 +12,7 @@ import { PSPS } from "../sim/catalog";
 import { legacySinglePsp, naiveOnSameDeclines, type InitialAttempt } from "../sim/baseline";
 import { authorize, customerResponse, generateNight, refreshCredential, type AuthResult, type SimCard, type SimNight } from "../sim/world";
 import { DAY } from "../core/time";
+import { auditRun } from "./audit";
 
 export interface SqlStore {
   all<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[];
@@ -252,7 +253,9 @@ export class LedgerLogic {
   /** Keep the newest `keep` runs; delete older ones. */
   pruneRuns(keep: number): void {
     const old = this.db.all<{ id: string }>(`SELECT id FROM runs ORDER BY created_at DESC LIMIT -1 OFFSET ?`, keep);
+    const keepFull = this.db.all<{ id: string }>(`SELECT id FROM runs WHERE label='full' AND status='completed' ORDER BY created_at DESC LIMIT 1`)[0]?.id;
     for (const { id } of old) {
+      if (id === keepFull) continue;
       for (const t of ["payments", "attempts", "decisions", "events", "sim_cards", "chat"]) this.db.run(`DELETE FROM ${t} WHERE run_id=?`, id);
       this.db.run(`DELETE FROM sim_nights WHERE run_id=?`, id);
       this.db.run(`DELETE FROM runs WHERE id=?`, id);
@@ -452,7 +455,7 @@ export class LedgerLogic {
   completeRun(runId: string, nowMs: number): void {
     const run = this.getRun(runId);
     if (!run || run.status === "completed") return;
-    const summary = this.summary(runId);
+    const summary = { ...this.summary(runId), violations: auditRun(this.exportRun(runId)).length };
     this.db.run(`UPDATE runs SET status='completed', completed_at=?, summary_json=? WHERE id=?`, nowMs, JSON.stringify(summary), runId);
   }
 
@@ -508,6 +511,7 @@ export class LedgerLogic {
       },
       naive: baseline.naive,
       legacy: baseline.legacy,
+      violations: null,
     };
   }
 
@@ -662,6 +666,8 @@ export interface RunSummary {
   credentialTypes: { networkToken: number; panFallback: number };
   naive: BaselineLike;
   legacy: BaselineLike & { approvedFirst: number; renewals: number };
+  /** Guardrail violations found by the audit when the run completed (null while running). */
+  violations: number | null;
 }
 
 function refreshedExpiry(expiry: string): string {

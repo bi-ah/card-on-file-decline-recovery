@@ -30,7 +30,7 @@ function naiveRetries(night: SimNight, card: SimCard, first: InitialAttempt, out
   if (first.result.approved) return;
   out.declines++;
   out.declinedCents += card.amountCents;
-  let last = first.result;
+  let last: AuthResult = first.result;
   for (const [k, d] of NAIVE_DAYS.entries()) {
     if (last.approved) break;
     const rule = classify(card.brand, last.code, last.mac);

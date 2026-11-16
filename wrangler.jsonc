@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ba-cofdr",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+
+  // Operator page. API routes run in the Worker first.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Workers AI explains; it never decides. It always runs remotely, also under `wrangler dev`.
+  "ai": { "binding": "AI", "remote": true },
+
+  // One SQLite-backed Durable Object is the ledger.
+  "durable_objects": {
+    "bindings": [{ "name": "LEDGER", "class_name": "Ledger" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Ledger"] }],
+
+  // One Workflow instance per failed renewal.
+  "workflows": [
+    {
+      "name": "ba-cofdr-recovery",
+      "binding": "RECOVERY",
+      "class_name": "RecoveryWorkflow"
+    }
+  ],
+
+  "vars": {
+    // Real milliseconds per simulated day (3000 = one simulated day every 3 s).
+    "SIM_DAY_MS": "3000",
+    "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    // Hourly quotas for the public demo.
+    "QUOTA_RUNS_PER_HOUR": "10",
+    "QUOTA_RUNS_PER_IP_PER_HOUR": "3",
+    "QUOTA_CHAT_PER_HOUR": "100",
+    "QUOTA_CHAT_PER_IP_PER_HOUR": "20",
+    "KEEP_RUNS": "5"
+  }
+}
