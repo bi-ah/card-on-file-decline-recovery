@@ -178,3 +178,19 @@ it was sent; only line-wrap artifacts (words joined where a line break was lost)
 >    one-line note that earlier unrelated turns are excluded, and keep docs/PROMPTS.md as a
 >    readable index of my prompts with notes.
 > 10. Recommended
+
+## Prompt 8: go-ahead
+
+> The plan is locked. Go ahead.
+>
+> * Local folder: `{LOCAL_FOLDER}`
+> * GitHub repository: `{GITHUB_OWNER}/{REPO_NAME}` (public)
+> * Cloudflare Worker name: `{WORKER_NAME}` (Workflow `{WORKER_NAME}-workflow`)
+>
+> Commit as you go. Ask me before pushing a code and deploying.
+>
+> Build it, milestone by milestone, running the tests at each step. When everything passes
+> locally, including the functional tests against `wrangler dev`, create the repository, push,
+> deploy, and run the functional tests against the live URL. Leave the live demo showing a
+> completed night. Then report: test results, end-to-end results, the live URL, and anything
+> that is not working or not verified.
