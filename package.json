@@ -1,0 +1,21 @@
+{
+  "name": "card-on-file-decline-recovery",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Card-on-file decline recovery for subscription renewals on Cloudflare Workers, Workflows, Durable Objects and Workers AI.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "wrangler types && tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json",
+    "test": "vitest run --project unit",
+    "test:functional": "vitest run --project functional",
+    "cf-typegen": "wrangler types",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0",
+    "wrangler": "4.162.0"
+  }
+}
