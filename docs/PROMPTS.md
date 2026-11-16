@@ -2,6 +2,21 @@
 
 The prompts given to Claude Code to design and build this project, in order. Each is saved as
 it was sent; only line-wrap artifacts (words joined where a line break was lost) are fixed.
+The full transcript of the session, with Claude's replies and tool calls, is in
+[PROMPT_HISTORY.md](PROMPT_HISTORY.md).
+
+## Index
+
+| # | Prompt | What came of it |
+|---|---|---|
+| 1 | The problem | Saved; repository created |
+| 2 | The solution (D4) | Saved |
+| 3 | The design document | [DESIGN.md](DESIGN.md): problem and solution sequence diagrams, trust boundaries, decision flowchart, problem-to-fix table, what is simulated |
+| 4 | Guardrails | Applied throughout. Checked by the unit tests, the whole-night audit (`src/ledger/audit.ts`) and the functional tests |
+| 5 | Engineering requirements | Unit tests with 70+ labelled decline cases; invariant tests over 5 seeds; functional tests; CI/CD; README; [ADRs](adr); operator page |
+| 6 | Questions | Ten questions, each with a recommended answer and alternatives |
+| 7 | Answers | Category 1 handling per code, `ba-cofdr` prefix, clock, paydays, outages, quotas with salted IP hashes; recorded in [DESIGN.md](DESIGN.md) section 7 and [network-rules.md](network-rules.md) |
+| 8 | Go-ahead | Built milestone by milestone, with tests at each step; this file and the transcript |
 
 ## Prompt 1: the problem
 
