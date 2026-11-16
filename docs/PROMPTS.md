@@ -24,6 +24,10 @@ tool call, is in [PROMPT_HISTORY.md](PROMPT_HISTORY.md). Both files are generate
 | 11 | Push, deploy and export | Pushed and deployed `ba-cofdr`; functional tests passed against the live URL; prompt history exported |
 | 12 | Check names and wording | Names confirmed against GitHub and Cloudflare. This file rebuilt from the session file |
 | 13 | Commit, push, deploy | Prompt history committed and pushed; the Workflow-start fix pushed and deployed |
+| 14 | Refine the operator page UI | System Overview with the README and its diagrams; How to use guide; one "Run a night" button; progress card with phases, simulated clock and live activity; UX fixes. Verified in the browser at phone and desktop, light and dark |
+| 15 | Push and deploy | Pushed and deployed; functional tests passed against the live URL |
+| 16 | Add the UI prompt to the history | This file and PROMPT_HISTORY.md regenerated |
+| 17 | Commit and push | Prompt history committed and pushed |
 
 ## Prompt 1
 
@@ -159,3 +163,63 @@ Push and deploy ba-cofdr to Cloudflare. Export this session's prompt history to 
 ## Prompt 13
 
 Commit, push, deploy
+
+## Prompt 14
+
+Refine the operator page UI. Keep the existing API and guardrails; change the backend only where a point below needs it.
+
+1. System Overview
+   1. Add a 'System Overview" button on the page that shows the complete README content containing what problem does it solve and how it solve it, architecture diagram, the problem workflow and solution Sequence Diagram in Mermaid with all actors involved.
+2. Usage guide
+   1. Add a "How to use" button in the header that opens a side panel (full-screen sheet on phones).
+   2. It explains, in 5–6 short steps: what the demo simulates, how to start a night, what to watch while it runs, how to read a payment's timeline and its rules, and what to ask in the chat.
+   3. Open it automatically on a visitor's first visit (remember this in the browser), and close it with Esc or a close button.
+   4. Add a one-line "Everything here is simulated" note with a link to the README.
+3. One action to start a test run
+   1. Replace "Generate night" + "Recover" with one "Run a night" button that generates and then starts recovery.
+   2. While a run is generating or recovering, disable the button, show why ("A night is running…"), and ignore repeat clicks or Enter.
+   3. Treat Recover and chat Send the same way: no double submits.
+   4. If another visitor's run is already active (409), don't just show an error: switch to that run and let the user watch it live.
+   5. If the hourly quota is used (429), say when it resets.
+4. Clear progress
+   1. Show a progress bar with a percentage: renewals settled out of declined.
+   2. Also show the simulated clock ("Day 6 of 21"), the elapsed time and an estimated time left, from the run's clock speed.
+   3. Show the phases in order: Billing the night → Recovering → Auditing → Completed.
+   4. Generating takes a few seconds; show a spinner with "Billing 2,000 renewals…" instead of a frozen page.
+5. Live updates
+   1. During a run, update the tiles, recovery paths, incidents and payments table live, about once a second, without reloading the page.
+   2. Use polling unless a push channel (Server-Sent Events or a WebSocket from the Durable Object) is simpler and cheaper; tell me which you chose and why.
+   3. Show a live activity feed of the latest events, for example "pay_0123: retry via psp-uk approved".
+   4. Briefly highlight values and rows that change, and respect reduced-motion settings.
+   5. If an open payment timeline is still in progress, update it live too.
+   6. Show "Updated just now", and if nothing changes for 30 seconds while a run is active, show a "Run looks stalled" warning.
+   7. When the run completes, show a short completion message with the headline result and the audit result (violations).
+6. UX gaps to fix
+   1. Run selector: label runs clearly (date, time, size, status), hide CI test runs by default, and keep the selected run in the URL so it can be shared.
+   2. Explain jargon in plain words with tooltips or a glossary: MAC, NTID, network token, card-number fallback, cascade, Visa categories, dunning window.
+   3. Empty, loading and error states for every section; a clear message and a retry button when the API is unreachable.
+   4. Chat: note when answers describe a run still in progress; disable Send while waiting; keep suggested questions visible.
+   5. Payments table: keep filters and the page when data refreshes; show the result count; make rows open the timeline with the keyboard.
+   6. A link to the GitHub repository and the docs in the header or footer.
+   7. A light/dark toggle that defaults to the system setting.
+   8. Accessibility: announce progress and completion through an aria-live region, use visible focus states and readable contrast, and label every control.
+   9. Phone and desktop: no horizontal page scroll at 375 px; the header actions stay reachable.
+
+
+Done means:
+- Verify in the browser against `wrangler dev`: start a full night and watch it finish, at phone and desktop widths, in light and dark. Send me screenshots of the progress state and the completed state.
+- Keep all unit and functional tests passing, and add functional tests for the new API behavior, if any.
+- Update the README.
+- Commit as you go, but ask me before pushing or deploying.
+
+## Prompt 15
+
+Push and deploy
+
+## Prompt 16
+
+We should add the last prompt i.e., "Refine the operator page UI..." in the prompt history.
+
+## Prompt 17
+
+Commit and push
