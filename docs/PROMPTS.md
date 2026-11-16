@@ -158,3 +158,23 @@ it was sent; only line-wrap artifacts (words joined where a line break was lost)
 
 > Do you have any questions? For each one, give me your recommended answer and the
 > alternatives, so I can just confirm.
+
+## Prompt 7: answers
+
+> 1. Use `ba-cofdr-` (Worker `ba-cofdr`, Workflow `ba-cofdr-recovery`, Durable Object `Ledger`).
+> 2. Category 1: 07 stop with no outreach. 04, 41, 43: never retry the card; updater, and if it
+>    returns a replacement card charge that, else ask the customer. 46 and 14: updater, then
+>    customer. 15 and 57: ask the customer for another card, no updater. 12: stop and alert
+>    operations. R0, R1, R3: stop and cancel the subscription, no dunning.
+> 3. Llama 3.3 70B fp8-fast, after checking it is current.
+> 4. 3 seconds per simulated day live, configurable; about 0.5 seconds in CI.
+> 5. 2,000 renewals giving about 300 declines; 50 declines in CI.
+> 6. Baseline computed in code, as you recommend.
+> 7. Paydays on the 1st, 15th, 25th and last day of the month; 30% of customers respond,
+>    configurable; each night has one PSP outage window and one issuer outage.
+> 8. As you recommend, plus one active run at a time, and per-IP limits counted with a salted
+>    hash only, never raw IP addresses.
+> 9. Both: export the real transcript from Prompt 1 onwards to docs/PROMPT_HISTORY.md with a
+>    one-line note that earlier unrelated turns are excluded, and keep docs/PROMPTS.md as a
+>    readable index of my prompts with notes.
+> 10. Recommended
