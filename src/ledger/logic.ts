@@ -69,6 +69,8 @@ export interface LiveProgress {
   recovered: number;
   recoveredCents: number;
   attempts: number;
+  /** The furthest simulated minute any renewal in the run has reached. */
+  simNow: number;
   activity: ActivityRow[];
   cursor: number;
 }
@@ -485,7 +487,7 @@ export class LedgerLogic {
   completeRun(runId: string, nowMs: number): void {
     const run = this.getRun(runId);
     if (!run || run.status === "completed") return;
-    const summary = { ...this.summary(runId), violations: auditRun(this.exportRun(runId)).length };
+    const summary = { ...this.summary(runId), status: "completed", violations: auditRun(this.exportRun(runId)).length };
     this.db.run(`UPDATE runs SET status='completed', completed_at=?, summary_json=? WHERE id=?`, nowMs, JSON.stringify(summary), runId);
   }
 
@@ -657,9 +659,9 @@ export class LedgerLogic {
   live(runId: string, after: number, limit = 40): LiveProgress | null {
     const run = this.getRun(runId);
     if (!run) return null;
-    const c = this.db.all<{ declined: number; inProgress: number; recovered: number; recoveredCents: number }>(
+    const c = this.db.all<{ declined: number; inProgress: number; recovered: number; recoveredCents: number; simNow: number | null }>(
       `SELECT COUNT(*) AS declined, SUM(status='recovering') AS inProgress, SUM(status='recovered') AS recovered,
-              SUM(CASE WHEN status='recovered' THEN amount_cents ELSE 0 END) AS recoveredCents
+              SUM(CASE WHEN status='recovered' THEN amount_cents ELSE 0 END) AS recoveredCents, MAX(now) AS simNow
        FROM payments WHERE run_id=? AND first_decline_at IS NOT NULL`, runId,
     )[0]!;
     const attempts = this.db.all<{ n: number }>(`SELECT COUNT(*) AS n FROM attempts WHERE run_id=? AND step<>'initial'`, runId)[0]!.n;
@@ -673,6 +675,7 @@ export class LedgerLogic {
       recovered: c.recovered ?? 0,
       recoveredCents: c.recoveredCents ?? 0,
       attempts,
+      simNow: c.simNow ?? 0,
       activity: rows,
       cursor,
     };

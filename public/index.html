@@ -5,19 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Card-on-File Decline Recovery</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='18' rx='3' fill='%232563eb'/%3E%3Crect x='2' y='11' width='28' height='4' fill='%231e3a8a'/%3E%3C/svg%3E">
   <meta name="description" content="Operator view of a simulated subscription merchant's nightly renewals, declines and rule-based recovery.">
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
+  <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <header class="app-header">
     <div class="wrap header-inner">
-      <div class="brand-row">
-        <h1>Card-on-File Decline Recovery</h1>
-        <span class="sim-badge" id="sim-label">Simulated data: fictional PSPs, issuers, BINs and customers</span>
+      <div class="top-row">
+        <div class="brand-row">
+          <h1>Card-on-File Decline Recovery</h1>
+          <span class="sim-badge" id="sim-label">Simulated data</span>
+        </div>
+        <nav class="header-actions" aria-label="Help and settings">
+          <button type="button" id="btn-howto" class="btn btn-ghost btn-small" aria-haspopup="dialog" aria-controls="howto">How to use</button>
+          <button type="button" id="btn-overview" class="btn btn-ghost btn-small" aria-haspopup="dialog" aria-controls="overview">System Overview</button>
+          <button type="button" id="btn-theme" class="btn btn-ghost btn-small" aria-label="Switch to dark theme">Dark theme</button>
+          <a class="btn btn-ghost btn-small" href="https://github.com/bi-ah/card-on-file-decline-recovery" target="_blank" rel="noopener noreferrer">GitHub<span class="sr-only"> (opens in a new tab)</span></a>
+        </nav>
       </div>
+
+      <p class="sim-note">Everything here is simulated: fictional PSPs, issuers, cards and customers. <button type="button" class="link" id="link-overview" aria-haspopup="dialog">Read the overview</button></p>
       <p class="tagline">Renewals are charged nightly with merchant-owned network tokens. Declines are recovered by a deterministic rules engine; the assistant only explains, using read-only tools.</p>
 
       <div class="controls">
@@ -27,35 +40,98 @@
             <option value="">Loading runs…</option>
           </select>
           <span id="run-status" class="badge" hidden></span>
+          <label class="check" for="show-test">
+            <input type="checkbox" id="show-test">
+            <span id="show-test-text">Show test runs</span>
+          </label>
         </div>
         <div class="actions">
-          <button type="button" id="btn-generate" class="btn" aria-label="Generate a new simulated night of renewals">Generate night</button>
-          <button type="button" id="btn-recover" class="btn btn-primary" aria-label="Recover declined renewals for the selected run" disabled>Recover</button>
+          <button type="button" id="btn-run" class="btn btn-primary" aria-describedby="run-hint">Run a night</button>
+          <button type="button" id="btn-start" class="btn" hidden>Start recovery</button>
+          <p id="run-hint" class="run-hint" aria-live="off"></p>
+          <button type="button" id="btn-show-active" class="link small" aria-label="Show the night that is running" hidden>Show it</button>
         </div>
+      </div>
+
+      <div id="run-message" class="run-message" role="status" hidden>
+        <p id="run-message-text"></p>
+        <button type="button" id="run-message-close" class="btn btn-ghost btn-small" aria-label="Dismiss message">Dismiss</button>
       </div>
 
       <div id="app-error" class="alert" role="alert" hidden>
         <p id="app-error-text"></p>
-        <button type="button" id="app-error-close" class="btn btn-ghost btn-small" aria-label="Dismiss error">Dismiss</button>
+        <div class="alert-actions">
+          <button type="button" id="app-error-retry" class="btn btn-small" hidden>Retry</button>
+          <button type="button" id="app-error-close" class="btn btn-ghost btn-small" aria-label="Dismiss error">Dismiss</button>
+        </div>
       </div>
-      <p id="notice" class="notice" role="status"></p>
     </div>
   </header>
 
-  <main id="main" class="wrap">
+  <main id="main" class="wrap" tabindex="-1">
+    <div id="done-banner" class="banner" hidden>
+      <p id="done-text"></p>
+      <button type="button" id="done-close" class="btn btn-ghost btn-small" aria-label="Dismiss completion message">Dismiss</button>
+    </div>
+
+    <section class="panel progress-card" id="progress-card" aria-labelledby="pc-h" hidden>
+      <div class="pc-head">
+        <div class="pc-title">
+          <h2 id="pc-h">Night in progress</h2>
+          <span id="pc-phase" class="badge badge-warn"></span>
+        </div>
+        <p id="pc-updated" class="muted small"></p>
+      </div>
+
+      <ol class="stepper" id="pc-steps" aria-label="Phases">
+        <li data-phase="billing"><span class="step-dot" aria-hidden="true"></span><span class="step-text">Billing the night</span><span class="sr-only step-state"></span></li>
+        <li data-phase="recovering"><span class="step-dot" aria-hidden="true"></span><span class="step-text">Recovering</span><span class="sr-only step-state"></span></li>
+        <li data-phase="auditing"><span class="step-dot" aria-hidden="true"></span><span class="step-text">Auditing</span><span class="sr-only step-state"></span></li>
+        <li data-phase="completed"><span class="step-dot" aria-hidden="true"></span><span class="step-text">Completed</span><span class="sr-only step-state"></span></li>
+      </ol>
+
+      <div id="pc-billing" class="pc-billing" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="pc-billing-text">Billing 2,000 renewals…</span>
+      </div>
+
+      <p id="pc-summary" class="pc-summary" hidden></p>
+
+      <div id="pc-bar-box" class="pc-bar-box">
+        <div class="pc-bar-label">
+          <span id="pc-bar-text">Declined renewals settled</span>
+          <strong id="pc-pct">0%</strong>
+        </div>
+        <div id="pc-bar" class="bar" role="progressbar" aria-labelledby="pc-bar-text" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="pc-bar-fill" class="bar-fill"></span>
+        </div>
+      </div>
+
+      <dl id="pc-stats" class="pc-stats">
+        <div><dt>Simulated clock</dt><dd id="pc-clock">–</dd></div>
+        <div><dt>Elapsed</dt><dd id="pc-elapsed">–</dd></div>
+        <div><dt>Time left</dt><dd id="pc-left">–</dd></div>
+        <div><dt>Recovered so far</dt><dd id="pc-recovered">–</dd></div>
+      </dl>
+
+      <p id="pc-stall" class="warn-note" hidden>Run looks stalled — no progress for 30 s</p>
+      <p id="pc-error" class="inline-error small" hidden></p>
+
+      <div id="pc-feed-box" class="feed-box" hidden>
+        <h3 id="feed-h">Live activity</h3>
+        <p class="muted small">Newest first. Select a payment id to open its timeline.</p>
+        <ol id="pc-feed" class="feed" aria-labelledby="feed-h"></ol>
+      </div>
+    </section>
+
     <section class="panel" id="summary-section" aria-labelledby="summary-h">
       <div class="panel-head">
         <h2 id="summary-h">Night summary</h2>
         <p id="run-meta" class="muted"></p>
       </div>
 
-      <div id="progress" class="progress" hidden>
-        <label for="progress-bar" id="progress-label">Recovering</label>
-        <progress id="progress-bar" max="1" value="0"></progress>
-      </div>
-
       <dl id="tiles" class="tiles">
-        <div class="tile"><dt>Renewals</dt><dd class="tile-value">–</dd></div>
+        <div class="tile"><dt>Summary</dt><dd class="tile-sub">Loading…</dd></div>
       </dl>
 
       <div class="summary-grid">
@@ -101,6 +177,7 @@
           <h2 id="chat-h">Ask about this run</h2>
           <p class="muted small">Answers come from Llama 3.3 on Workers AI using read-only tools. Recovery decisions are made by the rules engine, not the model.</p>
         </div>
+        <p id="chat-running" class="warn-note small" hidden>This night is still running — answers describe it so far.</p>
         <div id="chat-log" class="chat-log" aria-live="polite" aria-relevant="additions"></div>
         <div class="suggestions" role="group" aria-label="Suggested questions">
           <button type="button" class="chip" data-prompt="Why did renewals fail last night?">Why did renewals fail last night?</button>
@@ -111,7 +188,7 @@
         <form id="chat-form" class="chat-form">
           <label for="chat-input" class="sr-only">Your question</label>
           <textarea id="chat-input" rows="2" maxlength="2000" placeholder="Ask about declines, retries, incidents…"></textarea>
-          <button type="submit" id="chat-send" class="btn btn-primary" aria-label="Send question">Send</button>
+          <button type="submit" id="chat-send" class="btn btn-primary">Send</button>
         </form>
         <p id="chat-error" class="inline-error" role="alert" hidden></p>
       </section>
@@ -120,7 +197,7 @@
     <section class="panel" id="payments-section" aria-labelledby="payments-h">
       <div class="panel-head">
         <h2 id="payments-h">Declined renewals</h2>
-        <p class="muted small">Select a payment to see every attempt and decision, and the rule behind each one.</p>
+        <p class="muted small">Select a row (or focus it and press Enter) to see every attempt and decision, and the rule behind each one.</p>
       </div>
 
       <form id="filters" class="filters" role="search" aria-label="Filter declined renewals">
@@ -177,26 +254,27 @@
           <input id="f-q" name="q" type="search" autocomplete="off" spellcheck="false" placeholder="Payment, customer, BIN, last 4">
         </div>
         <div class="field field-actions">
-          <button type="reset" class="btn btn-ghost" aria-label="Clear all filters">Clear</button>
+          <button type="reset" class="btn btn-ghost">Clear filters</button>
         </div>
       </form>
 
-      <div class="table-wrap" tabindex="0" role="region" aria-labelledby="payments-h">
+      <span id="row-hint" class="sr-only">Press Enter to open the payment timeline.</span>
+      <div id="payments-wrap" class="table-wrap" tabindex="0" role="region" aria-labelledby="payments-h">
         <table class="payments">
           <caption class="sr-only">Declined renewals for the selected run</caption>
-          <thead>
+          <thead id="payments-head">
             <tr>
               <th scope="col">Payment</th>
               <th scope="col">Brand</th>
               <th scope="col">Region</th>
               <th scope="col">Card</th>
-              <th scope="col">Credential</th>
+              <th scope="col" data-help="token">Credential</th>
               <th scope="col" class="num">Amount</th>
-              <th scope="col">First code</th>
+              <th scope="col" data-help="visa">First code</th>
               <th scope="col">First PSP</th>
               <th scope="col">Path</th>
               <th scope="col">Status</th>
-              <th scope="col" class="num">Retries</th>
+              <th scope="col" class="num" data-help="cascade">Retries</th>
             </tr>
           </thead>
           <tbody id="payments-body">
@@ -206,7 +284,7 @@
       </div>
 
       <nav class="pager" aria-label="Payments pages">
-        <p id="pager-text" class="muted small"></p>
+        <p id="pager-text" class="muted small" aria-live="polite"></p>
         <div class="pager-buttons">
           <button type="button" id="page-prev" class="btn btn-small" aria-label="Previous page" disabled>Previous</button>
           <button type="button" id="page-next" class="btn btn-small" aria-label="Next page" disabled>Next</button>
@@ -216,16 +294,77 @@
   </main>
 
   <footer class="wrap app-footer">
-    <p class="muted small">Demo on Cloudflare Workers. The vault, token service, account updater, PSPs, issuers, BINs and customers are all simulated.</p>
+    <nav aria-label="Project documents">
+      <ul class="footer-links">
+        <li><a href="https://github.com/bi-ah/card-on-file-decline-recovery" target="_blank" rel="noopener noreferrer">GitHub repository</a></li>
+        <li><a href="https://github.com/bi-ah/card-on-file-decline-recovery/blob/main/docs/DESIGN.md" target="_blank" rel="noopener noreferrer">Design</a></li>
+        <li><a href="https://github.com/bi-ah/card-on-file-decline-recovery/blob/main/docs/network-rules.md" target="_blank" rel="noopener noreferrer">Network rules</a></li>
+        <li><a href="https://github.com/bi-ah/card-on-file-decline-recovery/tree/main/docs/adr" target="_blank" rel="noopener noreferrer">ADRs</a></li>
+        <li><a href="https://github.com/bi-ah/card-on-file-decline-recovery/blob/main/docs/PROMPTS.md" target="_blank" rel="noopener noreferrer">Prompts</a></li>
+      </ul>
+    </nav>
+    <p class="muted small">Demo on Cloudflare Workers. The vault, token service, account updater, PSPs, issuers, BINs and customers are all simulated. Links open in a new tab.</p>
   </footer>
 
   <dialog id="timeline" class="drawer" aria-labelledby="tl-title">
     <div class="sheet">
       <div class="sheet-head">
         <h2 id="tl-title">Payment timeline</h2>
-        <button type="button" id="tl-close" class="btn btn-ghost btn-small" aria-label="Close timeline">Close</button>
+        <button type="button" class="btn btn-ghost btn-small" data-close aria-label="Close timeline">Close</button>
       </div>
-      <div id="tl-body" class="sheet-body"></div>
+      <div id="tl-body" class="sheet-body" tabindex="-1"></div>
+    </div>
+  </dialog>
+
+  <dialog id="howto" class="drawer" aria-labelledby="howto-title">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 id="howto-title">How to use this demo</h2>
+        <button type="button" class="btn btn-ghost btn-small" data-close aria-label="Close how to use">Close</button>
+      </div>
+      <div id="howto-body" class="sheet-body" tabindex="-1">
+        <ol class="steps">
+          <li>
+            <strong>What it simulates.</strong> A subscription merchant charges 2,000 stored cards one night. Some renewals are declined. A rules engine then tries to recover them over a compressed 28-day window, where one simulated day lasts a few seconds. Every PSP, issuer, card and customer is fictional.
+          </li>
+          <li>
+            <strong>Start a night.</strong> Press <em>Run a night</em>. It bills 2,000 renewals (this takes a few seconds), then starts recovery straight away. Only one night can run at a time; if another one is running, the page switches to it.
+          </li>
+          <li>
+            <strong>Watch it run.</strong> The progress card shows how many declined renewals are settled, the simulated clock (for example <em>Day 6 of 21</em>), and the current phase. The live activity feed lists retries and customer messages as they happen, and the summary tiles and table update every few seconds. A night takes a few minutes.
+          </li>
+          <li>
+            <strong>Open a payment.</strong> Select a row in <em>Declined renewals</em>, or a payment id in the live feed. The timeline lists every attempt, each decision the engine made, and the network rule behind it, with its source and how confident we are in that reading.
+          </li>
+          <li>
+            <strong>Ask the assistant.</strong> The chat answers from the run's ledger using read-only tools; it never makes decisions. Try:
+            <ul>
+              <li>“Why did renewals fail last night?”</li>
+              <li>“What did you do with the expired cards?”</li>
+              <li>“How does this compare with the naive retry schedule?”</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Learn more.</strong> <button type="button" class="link" data-open-overview>System Overview</button> shows the full README with the architecture and sequence diagrams.
+          </li>
+        </ol>
+
+        <h3 id="glossary-h">Glossary</h3>
+        <dl id="glossary" class="glossary" aria-labelledby="glossary-h"></dl>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="overview" class="drawer drawer-wide" aria-labelledby="ov-title">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 id="ov-title">System Overview</h2>
+        <div class="sheet-head-actions">
+          <a class="btn btn-ghost btn-small" href="https://github.com/bi-ah/card-on-file-decline-recovery#readme" target="_blank" rel="noopener noreferrer">On GitHub<span class="sr-only"> (opens in a new tab)</span></a>
+          <button type="button" class="btn btn-ghost btn-small" data-close aria-label="Close system overview">Close</button>
+        </div>
+      </div>
+      <div id="ov-body" class="sheet-body" tabindex="-1"></div>
     </div>
   </dialog>
 </body>

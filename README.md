@@ -113,7 +113,7 @@ sequenceDiagram
 ### Architecture diagram
 
 ```mermaid
-flowchart LR
+flowchart TB
     Customer(["Customer"])
     Operator(["Operator"])
 
