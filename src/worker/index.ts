@@ -145,11 +145,39 @@ async function startRecovery(runId: string, env: Env, ledger: Stub, restart = fa
     return json({ run: runItem(started), started: 0, restarted }, 202);
   }
   // Deterministic instance ids: starting the same run twice cannot create duplicates.
+  // createBatch reports per-instance errors; "already exists" (10405, 10415) is fine,
+  // anything else is retried one by one so no failed renewal is left without a Workflow.
+  const failed: string[] = [];
   for (let i = 0; i < paymentIds.length; i += 100) {
     const chunk = paymentIds.slice(i, i + 100);
-    await env.RECOVERY.createBatch(chunk.map((paymentId) => ({ id: `${runId}-${paymentId}`, params: { runId, paymentId, dayMs: run.day_ms } })));
+    const res = await env.RECOVERY.createBatch({ instances: chunk.map((paymentId) => ({ id: `${runId}-${paymentId}`, params: { runId, paymentId, dayMs: run.day_ms } })) });
+    for (const e of res.errors) {
+      if (e.code === 10405 || e.code === 10415) continue;
+      const paymentId = chunk[e.index]!;
+      if (!(await createOne(env, runId, paymentId, run.day_ms))) failed.push(paymentId);
+    }
   }
-  return json({ run: runItem(started), started: paymentIds.length }, 202);
+  if (failed.length) console.error("workflow create failed", failed.length);
+  return json({ run: runItem(started), started: paymentIds.length - failed.length, failed: failed.length }, failed.length ? 500 : 202);
+}
+
+async function createOne(env: Env, runId: string, paymentId: string, dayMs: number): Promise<boolean> {
+  const id = `${runId}-${paymentId}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await env.RECOVERY.create({ id, params: { runId, paymentId, dayMs } });
+      return true;
+    } catch (e) {
+      // It may have been created after all: an existing instance is a success.
+      try {
+        await (await env.RECOVERY.get(id)).status();
+        return true;
+      } catch {
+        if (attempt === 2) console.error("workflow create", e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+  return false;
 }
 
 /** Workflow instance states for the payments still in progress (operations view). */
