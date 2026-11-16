@@ -153,3 +153,8 @@ it was sent; only line-wrap artifacts (words joined where a line break was lost)
 > answer used. Works on phone and desktop, light and dark.
 >
 > Check current versions of wrangler, Workflows and Workers AI models before writing code.
+
+## Prompt 6: questions
+
+> Do you have any questions? For each one, give me your recommended answer and the
+> alternatives, so I can just confirm.
