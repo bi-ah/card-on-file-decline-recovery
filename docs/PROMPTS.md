@@ -102,3 +102,27 @@ it was sent; only line-wrap artifacts (words joined where a line break was lost)
 >    paths).
 > 5. A table mapping each problem to its fix, and a section on what is simulated. Show me the
 >    document when done.
+
+## Prompt 4: guardrails
+
+> These guardrails are non-negotiable:
+>
+> 1. The rules engine is pure, deterministic and unit-tested; it makes every decision. The LLM
+>    never decides, schedules, routes or computes money. Every figure it may quote is computed
+>    in code and returned preformatted, and it has no tool that can change anything.
+> 2. Network rules live in configuration with a source and confidence for each, documented in
+>    `docs/network-rules.md`. Where sources disagree, use the reading that cannot incur a fee.
+> 3. Never retry a Visa Category 1 credential or after Mastercard MAC 03 or 21. Never cascade
+>    insufficient funds, risk or hard declines.
+> 4. Count limits per card across PSPs and re-check atomically when reserving an attempt.
+> 5. Idempotency everywhere: deterministic Workflow instance ids, ledger methods keyed by
+>    (payment, step), attempts reserved before the PSP call and recorded after it.
+> 6. The platform never stores or logs a card number or CVV. Only vault references, BIN, last
+>    four, expiry and token metadata.
+> 7. No real data and nothing from any employer: public rules and generated data only.
+> 8. Public deployment safety: hourly quotas on generating data, recovery runs and chat; no
+>    secrets in the repository; Cloudflare resources use the prefix I give you and nothing else
+>    on the account is touched.
+> 9. Ask before creating the repository, pushing, deploying or deleting anything.
+> 10. Report honestly: only say something works after the tests and end-to-end checks prove
+>     it, and show the evidence.
